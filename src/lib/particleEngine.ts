@@ -12,6 +12,10 @@ const LERP_SPEED = 0.05;
 const COLOR_LERP = 0.08;
 const PARTICLE_SIZE = 0.9;
 
+// ── Engine modes ────────────────────────────────────────────────────────────
+// Priority (high → low):  gesture  >  face  >  sphere
+type EngineMode = "sphere" | "face" | "gesture";
+
 export class ParticleEngine {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
@@ -24,23 +28,20 @@ export class ParticleEngine {
 
   // CPU buffers
   private targetPositions!: Float32Array;
-  private basePositions!: Float32Array;
+  private basePositions!: Float32Array; // permanent sphere, never mutated
   private targetColors!: Float32Array;
 
-  // Gesture state — pure, no locks or timers
+  // State
+  private mode: EngineMode = "sphere";
   private currentGesture: GestureType = GestureType.NONE;
   private currentPalette: ColorPalette = PALETTES.aurora;
 
-  // Face tracking state
+  // Face tracking
   private isFaceVisible = false;
-  private faceTargetX = 0; // [-1, 1], positive = right, negative = left
-  private faceTargetY = 0; // [-1, 1], positive = up, negative = down
+  private faceTargetX = 0;   // [-1,1] right=positive
+  private faceTargetY = 0;   // [-1,1] up=positive
   private faceSmoothX = 0;
   private faceSmoothY = 0;
-
-  // Idle-settle optimization: skip sphere update when not animating
-  private _sphereSettled = false;
-  private _idleFrames = 0;
 
   public onFPS?: (fps: number) => void;
 
@@ -78,24 +79,24 @@ export class ParticleEngine {
     const spherePos = generateShapePositions(ParticleShape.SPHERE, PARTICLE_COUNT, SCALE);
 
     this.targetPositions = new Float32Array(PARTICLE_STRIDE);
-    this.basePositions = new Float32Array(PARTICLE_STRIDE);
-    this.targetColors = new Float32Array(PARTICLE_STRIDE);
+    this.basePositions   = new Float32Array(PARTICLE_STRIDE);
+    this.targetColors    = new Float32Array(PARTICLE_STRIDE);
 
     const positions = new Float32Array(PARTICLE_STRIDE);
-    const colors = new Float32Array(PARTICLE_STRIDE);
+    const colors    = new Float32Array(PARTICLE_STRIDE);
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const bi = i * 3;
-      positions[bi] = spherePos[bi];
+      positions[bi]     = spherePos[bi];
       positions[bi + 1] = spherePos[bi + 1];
       positions[bi + 2] = spherePos[bi + 2];
 
-      this.basePositions[bi] = spherePos[bi];
+      this.basePositions[bi]     = spherePos[bi];
       this.basePositions[bi + 1] = spherePos[bi + 1];
       this.basePositions[bi + 2] = spherePos[bi + 2];
 
       const col = this.currentPalette.colors[i % this.currentPalette.colors.length];
-      colors[bi] = col.r;
+      colors[bi]     = col.r;
       colors[bi + 1] = col.g;
       colors[bi + 2] = col.b;
     }
@@ -105,7 +106,7 @@ export class ParticleEngine {
 
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    this.geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    this.geometry.setAttribute("color",    new THREE.BufferAttribute(colors, 3));
 
     this.material = new THREE.ShaderMaterial({
       vertexShader: particleVertexShader,
@@ -128,7 +129,7 @@ export class ParticleEngine {
     const count = 2000;
     const pos = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      pos[i * 3] = (Math.random() - 0.5) * 200;
+      pos[i * 3]     = (Math.random() - 0.5) * 200;
       pos[i * 3 + 1] = (Math.random() - 0.5) * 200;
       pos[i * 3 + 2] = (Math.random() - 0.5) * 200;
     }
@@ -142,168 +143,135 @@ export class ParticleEngine {
     );
   }
 
-  // ─── Sphere target update (face animation or static) ─────────────────────
+  // ─── Shape triggers (called once on mode transition) ──────────────────────
 
-  private updateSphereTargets(elapsed: number): void {
-    const hasFace = this.isFaceVisible;
-
-    // Settle optimization: when no face and sphere has converged, skip the loop
-    if (!hasFace) {
-      if (this._sphereSettled) return;
-      if (++this._idleFrames > 120) {
-        this._sphereSettled = true;
-        return;
-      }
-    } else {
-      // Face visible — always recompute
-      this._sphereSettled = false;
-      this._idleFrames = 0;
-    }
-
-    const base = this.basePositions;
-    const targets = this.targetPositions;
-    const tColors = this.targetColors;
-    const palette = this.currentPalette;
-
-    const fx = this.faceSmoothX;
-    const fy = this.faceSmoothY;
+  /** Transition → face shape. Particles form a holographic face portrait. */
+  private triggerFaceShape(): void {
+    const facePos = generateShapePositions(ParticleShape.FACE, PARTICLE_COUNT, SCALE);
+    const palette = PALETTES.hologram;
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const bi = i * 3;
-      const bx = base[bi];
-      const by = base[bi + 1];
-      const bz = base[bi + 2];
+      this.targetPositions[bi]     = facePos[bi];
+      this.targetPositions[bi + 1] = facePos[bi + 1];
+      this.targetPositions[bi + 2] = facePos[bi + 2];
 
-      if (hasFace) {
-        const len = Math.sqrt(bx * bx + by * by + bz * bz) || 1;
-        const nx = bx / len;
-        const ny = by / len;
-        const nz = bz / len;
-
-        // Project face direction onto sphere surface for directional bulge
-        const dot = nx * fx + ny * fy;
-
-        // Azimuthal + polar angles for spatially varied waves
-        const theta = Math.atan2(by, bx);
-        const phi = Math.acos(Math.max(-1, Math.min(1, nz)));
-
-        // Primary wave: slow, large — driven by face direction
-        const wave1 = Math.sin(elapsed * 0.55 + theta * 1.5 + dot * Math.PI) * 0.045;
-        // Secondary wave: faster, smaller — adds shimmer
-        const wave2 = Math.sin(elapsed * 1.3 + phi * 2.0 - theta * 0.8) * 0.022;
-        // Breathing pulse: global very-slow radius oscillation
-        const breath = Math.sin(elapsed * 0.35) * 0.018;
-
-        // Directional bulge (stronger: ±18%) + organic waves + breath
-        const r = len * (1 + 0.18 * dot + wave1 + wave2 + breath);
-
-        targets[bi] = nx * r;
-        targets[bi + 1] = ny * r;
-        targets[bi + 2] = nz * r;
-
-        // Color: brighten toward the face direction; cool-tint opposite side
-        const col = palette.colors[i % palette.colors.length];
-        const bright = 1 + 0.40 * Math.max(0, dot);
-        const dim   = 1 - 0.20 * Math.max(0, -dot);
-        const scale = dot >= 0 ? bright : dim;
-        tColors[bi]     = Math.min(1, col.r * scale);
-        tColors[bi + 1] = Math.min(1, col.g * scale);
-        tColors[bi + 2] = Math.min(1, col.b * scale);
-      } else {
-        // No face — restore static base sphere
-        targets[bi] = bx;
-        targets[bi + 1] = by;
-        targets[bi + 2] = bz;
-
-        const col = palette.colors[i % palette.colors.length];
-        tColors[bi] = col.r;
-        tColors[bi + 1] = col.g;
-        tColors[bi + 2] = col.b;
-      }
+      const col = palette.colors[i % palette.colors.length];
+      this.targetColors[bi]     = col.r;
+      this.targetColors[bi + 1] = col.g;
+      this.targetColors[bi + 2] = col.b;
     }
+    this.currentPalette = palette;
+    this.mode = "face";
   }
 
-  // ─── Shape trigger — called once when gesture changes ────────────────────
+  /** Transition → sphere. Particles return to base sphere positions. */
+  private triggerSphere(): void {
+    const palette = PALETTES.aurora;
 
-  private triggerShape(gesture: GestureType): void {
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const bi = i * 3;
+      this.targetPositions[bi]     = this.basePositions[bi];
+      this.targetPositions[bi + 1] = this.basePositions[bi + 1];
+      this.targetPositions[bi + 2] = this.basePositions[bi + 2];
+
+      const col = palette.colors[i % palette.colors.length];
+      this.targetColors[bi]     = col.r;
+      this.targetColors[bi + 1] = col.g;
+      this.targetColors[bi + 2] = col.b;
+    }
+    this.currentPalette = palette;
+    this.mode = "sphere";
+  }
+
+  /** Transition → gesture shape. */
+  private triggerGestureShape(gesture: GestureType): void {
     const action = getActionForGesture(gesture);
     if (!action) return;
 
     const shapePos = generateShapePositions(action.shape, PARTICLE_COUNT, SCALE);
-    const palette = action.palette;
+    const palette  = action.palette;
 
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const bi = i * 3;
-      this.targetPositions[bi] = shapePos[bi];
+      this.targetPositions[bi]     = shapePos[bi];
       this.targetPositions[bi + 1] = shapePos[bi + 1];
       this.targetPositions[bi + 2] = shapePos[bi + 2];
 
       const col = palette.colors[i % palette.colors.length];
-      this.targetColors[bi] = col.r;
+      this.targetColors[bi]     = col.r;
       this.targetColors[bi + 1] = col.g;
       this.targetColors[bi + 2] = col.b;
     }
+    this.currentPalette = action.palette;
+    this.mode = "gesture";
   }
 
   // ─── Public API ──────────────────────────────────────────────────────────
 
   /**
-   * Called every frame with the current gesture.
-   * - NONE   → return to sphere (face animation applies if face visible)
-   * - Other  → switch to that shape immediately; hold until gesture changes
-   * No timers, no locks — purely driven by live gesture state.
+   * Gesture input (highest priority).
+   * - Non-NONE → switch to gesture shape immediately; hold until gesture changes.
+   * - NONE     → drop back to face mode (if face visible) or sphere mode.
+   * No timers, no locks.
    */
   public setGesture(gesture: GestureType): void {
     if (gesture === GestureType.NONE) {
-      if (this.currentGesture !== GestureType.NONE) {
-        this.currentGesture = GestureType.NONE;
-        this.currentPalette = PALETTES.aurora;
-        this._resetSettle();
+      if (this.currentGesture === GestureType.NONE) return; // already clear
+      this.currentGesture = GestureType.NONE;
+      // Return to the appropriate fallback
+      if (this.isFaceVisible) {
+        this.triggerFaceShape();
+      } else {
+        this.triggerSphere();
       }
       return;
     }
 
-    // Same gesture already active — nothing to change
-    if (gesture === this.currentGesture) return;
+    if (gesture === this.currentGesture) return; // same gesture, no-op
 
     const action = getActionForGesture(gesture);
     if (!action) return;
 
     this.currentGesture = gesture;
-    this.currentPalette = action.palette;
-    this._resetSettle();
-    this.triggerShape(gesture);
+    this.triggerGestureShape(gesture);
   }
 
   /**
-   * Face center in normalized image coords (0-1).
-   * x=0 is left edge, x=1 is right; y=0 is top, y=1 is bottom.
-   * This is called in the fallback mode to drive the sphere animation.
+   * Face position in normalised image coords [0,1].
+   * Called whenever a face is detected, to steer the particle face's orientation.
    */
   public setFacePosition(x: number, y: number): void {
-    // Mirror x (webcam is horizontally mirrored), center & scale to [-1, 1]
+    // Mirror webcam x; flip y (image y↓ → world y↑)
     this.faceTargetX = -(x - 0.5) * 2;
-    // Flip y (image y increases downward; we want up = positive)
     this.faceTargetY = -(y - 0.5) * 2;
   }
 
+  /**
+   * Face visibility — drives mode transitions between face and sphere.
+   * Gesture mode takes priority; this has no effect while a gesture is active.
+   */
   public setFaceVisible(visible: boolean): void {
-    if (visible !== this.isFaceVisible) {
-      this._resetSettle();
-    }
+    if (visible === this.isFaceVisible) return;
     this.isFaceVisible = visible;
-  }
 
-  private _resetSettle(): void {
-    this._sphereSettled = false;
-    this._idleFrames = 0;
+    if (this.currentGesture !== GestureType.NONE) return; // gesture has priority
+
+    if (visible) {
+      this.triggerFaceShape();
+    } else {
+      // Reset smooth face position so the next detection starts clean
+      this.faceSmoothX = 0;
+      this.faceSmoothY = 0;
+      this.triggerSphere();
+    }
   }
 
   // ─── Animation loop ───────────────────────────────────────────────────────
 
   public start(): void {
     let lastFpsTime = performance.now();
-    let frameCount = 0;
+    let frameCount  = 0;
 
     const animate = () => {
       this.animationId = requestAnimationFrame(animate);
@@ -319,24 +287,19 @@ export class ParticleEngine {
         lastFpsTime = now;
       }
 
-      // Smooth face position toward target
+      // Smooth face direction
       if (this.isFaceVisible) {
-        this.faceSmoothX += (this.faceTargetX - this.faceSmoothX) * 0.08;
-        this.faceSmoothY += (this.faceTargetY - this.faceSmoothY) * 0.08;
-      }
-
-      const isSphere = this.currentGesture === GestureType.NONE;
-
-      if (isSphere) {
-        this.updateSphereTargets(elapsed);
+        this.faceSmoothX += (this.faceTargetX - this.faceSmoothX) * 0.07;
+        this.faceSmoothY += (this.faceTargetY - this.faceSmoothY) * 0.07;
       }
 
       // ── CPU lerp ────────────────────────────────────────────────────────
-      const pos = this.geometry.attributes.position.array as Float32Array;
-      const col = this.geometry.attributes.color.array as Float32Array;
+      const pos  = this.geometry.attributes.position.array as Float32Array;
+      const col  = this.geometry.attributes.color.array as Float32Array;
       const tpos = this.targetPositions;
       const tcol = this.targetColors;
-      const lerpPos = isSphere ? LERP_SPEED : 0.06;
+      // Face mode uses a slightly slower lerp so the transition feels weightier
+      const lerpPos = this.mode === "face" ? 0.04 : LERP_SPEED;
 
       for (let i = 0; i < PARTICLE_STRIDE; i++) {
         pos[i] += (tpos[i] - pos[i]) * lerpPos;
@@ -346,19 +309,24 @@ export class ParticleEngine {
       }
 
       this.geometry.attributes.position.needsUpdate = true;
-      this.geometry.attributes.color.needsUpdate = true;
+      this.geometry.attributes.color.needsUpdate    = true;
 
-      // Rotation:
-      // - Gesture mode  → damp rotation to zero (shape is static)
-      // - Face mode     → very slow rotation while the organic animation plays
-      // - Idle (no face, no gesture) → normal gentle rotation
-      if (!isSphere) {
+      // ── Rotation per mode ────────────────────────────────────────────────
+      // Gesture → damp to zero (shape is static, no spin)
+      // Face    → particle face mirrors real face tilt (yaw + pitch)
+      // Sphere  → gentle idle rotation
+      if (this.mode === "gesture") {
         this.particles.rotation.y *= 0.97;
         this.particles.rotation.x *= 0.97;
-      } else if (this.isFaceVisible) {
-        this.particles.rotation.y += 0.0006;
-        this.particles.rotation.x += 0.0003;
+      } else if (this.mode === "face") {
+        // Target rotation driven by face position.
+        // Face moves right (faceSmoothX < 0) → particle face turns right (neg Y rotation shows right side)
+        const tY =  this.faceSmoothX * 0.50;
+        const tX = -this.faceSmoothY * 0.35;
+        this.particles.rotation.y += (tY - this.particles.rotation.y) * 0.055;
+        this.particles.rotation.x += (tX - this.particles.rotation.x) * 0.055;
       } else {
+        // Sphere idle rotation
         this.particles.rotation.y += 0.002;
         this.particles.rotation.x += 0.001;
       }

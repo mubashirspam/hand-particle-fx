@@ -30,6 +30,7 @@ export enum GestureType {
 /* ─── Particle Shape Templates ─── */
 export enum ParticleShape {
   SPHERE = "sphere",
+  FACE = "face",
   HEART = "heart",
   FLOWER = "flower",
   LOTUS = "lotus",
