@@ -17,7 +17,7 @@ export default function Home() {
           name="description"
           content="Real-time 3D hand gesture particle system with Three.js and MediaPipe. Control 15,000 particles with your hands."
         />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
         <meta name="theme-color" content="#030008" />
         <link rel="icon" href="/favicon.ico" />
 

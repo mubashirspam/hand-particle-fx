@@ -26,6 +26,19 @@ body {
   font-family: "Exo 2", sans-serif;
   height: 100%;
   width: 100%;
+  /* Prevent pull-to-refresh and scroll bounce on mobile */
+  overscroll-behavior: none;
+  /* Prevent text selection on tap-hold */
+  -webkit-user-select: none;
+  user-select: none;
+  /* Prevent callout on long-press (iOS) */
+  -webkit-touch-callout: none;
+}
+
+/* Prevent default touch actions on the canvas so Three.js / MediaPipe
+   receive clean pointer events without the browser intercepting pinch/pan */
+canvas {
+  touch-action: none;
 }
 
 #__next {

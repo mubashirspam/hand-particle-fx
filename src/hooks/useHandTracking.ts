@@ -254,11 +254,15 @@ export function useHandTracking(): HandTrackingResult {
 
   // ── Camera start ───────────────────────────────────────────────────────────
   const startCamera = useCallback(async () => {
+    // Guard: if already initialised, skip to prevent double-init of WASM
+    if (handsModelRef.current || cameraRef.current) return;
+
     try {
       setError(null);
 
       const { Hands } = await import("@mediapipe/hands");
-      const { FaceDetection } = await import("@mediapipe/face_detection");
+      // Face detection disabled
+      // const { FaceDetection } = await import("@mediapipe/face_detection");
       const { Camera } = await import("@mediapipe/camera_utils");
 
       const hands = new Hands({
@@ -274,16 +278,12 @@ export function useHandTracking(): HandTrackingResult {
       hands.onResults(onHandResults);
       handsModelRef.current = hands;
 
-      const faceDetection = new FaceDetection({
-        locateFile: (file: string) =>
-          `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`,
-      });
-      faceDetection.setOptions({
-        model: "short",               // optimised for webcam range (< 2 m)
-        minDetectionConfidence: 0.4,  // lower threshold = more reliable detection
-      });
-      faceDetection.onResults(onFaceResults);
-      faceModelRef.current = faceDetection;
+      // Face detection disabled — uncomment to re-enable
+      // const faceDetection = new FaceDetection({ locateFile: (file) =>
+      //   `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}` });
+      // faceDetection.setOptions({ model: "short", minDetectionConfidence: 0.4 });
+      // faceDetection.onResults(onFaceResults);
+      // faceModelRef.current = faceDetection;
 
       if (videoRef.current) {
         const camera = new Camera(videoRef.current, {
@@ -292,9 +292,10 @@ export function useHandTracking(): HandTrackingResult {
             if (handsModelRef.current) {
               await handsModelRef.current.send({ image: videoRef.current });
             }
-            if (faceModelRef.current) {
-              await faceModelRef.current.send({ image: videoRef.current });
-            }
+            // Face detection disabled
+            // if (faceModelRef.current) {
+            //   await faceModelRef.current.send({ image: videoRef.current });
+            // }
           },
           width: 640,
           height: 480,

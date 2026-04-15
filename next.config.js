@@ -1,8 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  // Strict Mode double-invokes effects in dev, which initialises the
+  // MediaPipe WASM module twice and triggers:
+  //   "Module.arguments has been replaced with plain arguments_"
+  reactStrictMode: false,
   webpack: (config) => {
-    config.externals = config.externals || [];
+    config.resolve.fallback = { ...config.resolve.fallback, fs: false };
     return config;
   },
 };

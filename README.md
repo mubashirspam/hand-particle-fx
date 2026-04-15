@@ -1,7 +1,7 @@
 # ✦ Particle FX — Hand Gesture Particle Engine
 
 > Real-time 3D particle system controlled by hand gestures using Three.js + MediaPipe.  
-> 15,000 particles morphing between 12 shapes with 11 color palettes — all driven by your webcam.
+> 30,000 particles morphing between 12 shapes with 11 color palettes — all driven by your webcam.
 
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue?style=flat-square&logo=typescript)
@@ -45,9 +45,9 @@ hand-particle-fx/
 ├── src/
 │   ├── components/
 │   │   ├── ParticleScene.tsx    # Main scene orchestrator
-│   │   ├── HUD.tsx              # Heads-up display overlay
-│   │   ├── CameraFeed.tsx       # Webcam preview with landmarks
-│   │   └── StartScreen.tsx      # Launch screen
+│   │   ├── HUD.tsx              # Heads-up display overlay + brand watermark
+│   │   ├── CameraFeed.tsx       # Webcam preview with hand skeleton overlay
+│   │   └── StartScreen.tsx      # (unused — app auto-starts on load)
 │   ├── hooks/
 │   │   └── useHandTracking.ts   # MediaPipe hand tracking hook
 │   ├── lib/
@@ -85,7 +85,7 @@ hand-particle-fx/
 
 ```bash
 # Clone the repo
-git clone https://github.com/YOUR_USERNAME/hand-particle-fx.git
+git clone https://github.com/mubashirspam/hand-particle-fx.git
 cd hand-particle-fx
 
 # Install dependencies
@@ -95,7 +95,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) → click **Enable Camera & Start** → make gestures!
+Open [http://localhost:3000](http://localhost:3000) — the camera starts automatically. Allow webcam access when prompted, then make gestures!
 
 ### Deploy to Vercel
 
@@ -110,11 +110,12 @@ vercel
 
 ## ⚡ Performance
 
-- **15,000 particles** rendered with custom GLSL shaders
+- **30,000 particles** rendered with custom GLSL shaders
 - **Additive blending** for glow effects
 - **GPU-accelerated** — runs at 60fps on modern hardware
 - **Gesture smoothing** buffer prevents jitter
 - **Lerped transitions** between shapes and positions
+- **Fully responsive** — works on mobile and tablet browsers
 
 ## 🔧 Customization
 
@@ -128,7 +129,7 @@ vercel
 2. Assign it to a gesture action in `GESTURE_ACTIONS`
 
 ### Adjust Particle Count
-Change `PARTICLE_COUNT` in `src/lib/particleEngine.ts` (default: 15,000)
+Change `PARTICLE_COUNT` in `src/lib/particleEngine.ts` (default: 30,000)
 
 ## 📄 License
 
