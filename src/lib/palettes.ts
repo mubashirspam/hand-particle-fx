@@ -89,16 +89,6 @@ export const PALETTES: Record<string, ColorPalette> = {
       new THREE.Color(0xdbeafe),
     ],
   },
-  hologram: {
-    name: "Hologram",
-    colors: [
-      new THREE.Color(0x00ffff),  // cyan
-      new THREE.Color(0x88ddff),  // light blue
-      new THREE.Color(0xffffff),  // white
-      new THREE.Color(0xcc88ff),  // soft purple
-      new THREE.Color(0x44eeff),  // bright cyan
-    ],
-  },
   ironMan: {
     name: "Iron Man",
     colors: [
